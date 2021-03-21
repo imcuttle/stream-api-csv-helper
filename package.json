@@ -1,0 +1,21 @@
+{
+  "name": "csv-helper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "worker.js",
+  "scripts": {
+    "build": "npx browserify -s lib build.js -o dist.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "npm run build && npx gh-pages -d ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "jsdom": "^16.5.1",
+    "xmldom": "^0.5.0"
+  },
+  "devDependencies": {
+    "browserify": "^17.0.0"
+  }
+}

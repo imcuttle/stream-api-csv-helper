@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Helper</title>
+  <script src="//unpkg.com/csv-parse/lib/browser/index.js"></script>
+  <script src="//unpkg.com/csv-stringify/lib/browser/sync.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/streamsaver/StreamSaver.js"></script>
+
+</head>
+<body>
+  <div>
+    <button onclick="window.fileSelect.click()">
+      <input id="fileSelect" type="file" accept="text/csv" hidden></input>
+      上传csv
+    </button>
+  </div>
+  <h1 id="loading" style="display: none">处理中...，请稍后</h1>
+
+  <script>
+    // const _worker = new Worker('worker.js')
+    // async function handleTransformText(file) {
+    //   _worker.postMessage(file)
+    //   return new Promise((resolve) => {
+    //     const handle = (evt) => {
+    //       _worker.removeEventListener('message', handle)
+    //       resolve(evt.data)
+    //     }
+    //     _worker.addEventListener('message', handle)
+    //   })
+    //   // console.log('text', text.slice(0, 100));
+    //   // const csvArray = parse(text, { skip_lines_with_error: true })
+    //   //
+    //   // csvArray.forEach(row => {
+    //   //   row.forEach((text, i) => {
+    //   //     row[i] = transformText(text)
+    //   //   })
+    //   // })
+    //   //
+    //   // return stringify(csvArray)
+    // }
+
+
+    const transformText = text => {
+      const dom = new DOMParser().parseFromString(text, 'text/html');
+      const body = dom.documentElement.ownerDocument.body;
+
+      const blockElements = body.querySelectorAll('p,div')
+      blockElements.forEach(elem => {
+        if (elem.textContent) {
+          elem.textContent = elem.textContent + '\n'
+        }
+      })
+      return body.textContent
+    }
+
+    function utf8ArrayToString(aBytes) {
+      const utf8decoder = new TextDecoder();
+      return utf8decoder.decode(aBytes)
+    }
+
+
+    const handleCsvFile = file => {
+      const rs = new ReadableStream({
+        start(controller) {
+          const parser = parse({
+            skip_lines_with_error: true
+          });
+          parser.on('readable', function(){
+            let row
+            while (row = parser.read()) {
+              row.forEach((text, i) => {
+                row[i] = transformText(text)
+              })
+              console.log('row', row);
+              const utf8Encoder = new TextEncoder();
+              controller.enqueue(utf8Encoder.encode(stringify([row])));
+            }
+          })
+
+          parser.on('end', () => {
+            console.log('done')
+            controller.close();
+          })
+
+          const reader = file.stream().getReader();
+          reader.read().then(function processText({done, value}) {
+            if (done) {
+              parser.end()
+              return
+            }
+
+            // console.log('chunk', utf8ArrayToString(value))
+            parser.write(utf8ArrayToString(value))
+            return reader.read().then(processText);
+          })
+        }
+      });
+
+      return rs
+    }
+
+    window.fileSelect.addEventListener('change', async evt => {
+      if (evt.target.files[0]) {
+        const file = evt.target.files[0]
+        console.log('file', file);
+        window.loading.style.display = ''
+        const readableStream = handleCsvFile(file)
+        if (readableStream) {
+          const fileStream = streamSaver.createWriteStream('aaaa.csv', {
+            downloadStrategy: 'navigate'
+          })
+          console.log('转换后-readableStream', readableStream);
+
+          if (window.WritableStream && readableStream.pipeTo) {
+            return readableStream.pipeTo(fileStream)
+              .then(() => {
+                window.fileSelect.value = null
+                window.loading.style.display = 'none';
+              })
+          }
+          else {
+            const writer = fileStream.getWriter()
+            const reader = readableStream.getReader()
+            reader.read()
+              .then(function pump(res) {
+                console.log(res);
+                if (res.done) {
+                  writer.close();
+                  window.fileSelect.value = null
+                  window.loading.style.display = 'none';
+                } else {
+                  writer.write(res.value)
+                  return reader.read().then(pump)
+                }
+              })
+          }
+        }
+      }
+    })
+  </script>
+</body>
+</html>
+
